@@ -1,0 +1,2913 @@
+---
+title: "ALIVE_Consolidated_Analysis"
+format: html
+editor: visual
+---
+
+# Clear memory and load libraries
+```{r , echo=FALSE, include=FALSE}
+rm(list = ls())
+library(dplyr)
+library(purrr)
+library(haven)
+library(tidyr)
+library(gtsummary)
+library(flextable)
+library(stringr)
+library(scales)
+library(patchwork)
+library(officer)
+        
+```
+
+
+# Deafult knitr
+```{r default_chunks, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,      # Show code in output (FALSE to hide)
+  include = FALSE,   # Do not show the results from the chunk 
+  warning = FALSE,   # Hide warnings
+  message = FALSE,   # Hide messages
+  fig.width = 6,     # Set default figure width
+  fig.height = 4,    # Set default figure height
+  fig.align = "center", # Center figures
+  cache = FALSE       # Cache chunks to speed up re-runs
+)
+
+```
+
+
+
+# Working directories
+```{r data_path , echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+main_directory <- gsub("R Scripts","", getwd()); main_directory
+data_directory <- paste0(main_directory, "/", "Data/"); data_directory
+
+```
+
+
+
+# Load data sets
+
+```{r load_baseline_dataset, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+# Load the dataset
+load(paste0(data_directory, "ALIVE_Liver_cancer_Data_Cleaned_Data.RData"))
+```
+
+
+## Assign various data sets
+```{r}
+# Load HCC baseline data
+KBTH_HCC_baseline <- Alive_KBTH_HCC_Baseline_cleanup$Data
+
+# Load HepB baseline data
+KBTH_NHCC <- Alive_KBTH_HepNHCC_Baseline_cleanup$Data
+KBTH_NHCC_codebook <- Alive_KBTH_HepNHCC_Baseline_cleanup$Codebook
+
+# Load HepB DSQ data
+KBTH_HepB_DSQ <- Alive_KBTH_HepNHCC_DSQ_cleanup$Data
+
+# Load KATH baseline
+KATH_NHCC <- Alive_KATH_HepNHCC_Baseline_cleanup$Data
+KATH_NHCC_codebook <- Alive_KATH_HepNHCC_Baseline_cleanup$Codebook
+
+# Load KATH baseline
+GARH_NHCC <- Alive_GARH_HepNHCC_Baseline_cleanup$Data
+GARH_NHCC_codebook <- Alive_GARH_HepNHCC_Baseline_cleanup$Codebook
+
+# View(KBTH_NHCC)
+```
+
+
+## Initial variable checks for commonalities
+
+```{r}
+# Check if columns exist before renaming
+required_cols <- c("pheo88a2", "pheo88a2_1", "pheo88a2_2")
+missing_cols <- required_cols[!required_cols %in% colnames(GARH_NHCC)]
+
+if (length(missing_cols) > 0) {
+  warning("Missing columns: ", paste(missing_cols, collapse = ", "))
+} else {
+  GARH_NHCC <- GARH_NHCC %>%
+    rename(
+      phe088a2 = pheo88a2,
+      phe088a2_1 = pheo88a2_1,
+      phe088a2_2 = pheo88a2_2
+    )
+  GARH_NHCC_codebook$Variable[GARH_NHCC_codebook$Variable == "pheo88a2"][1] <- "phe088a2"
+  GARH_NHCC_codebook$Variable[GARH_NHCC_codebook$Variable == "pheo88a2_1"][1] <- "phe088a2_1"
+  GARH_NHCC_codebook$Variable[GARH_NHCC_codebook$Variable == "pheo88a2_2"][1] <- "phe088a2_2"
+  
+}
+
+GARH_NHCC <- GARH_NHCC %>% 
+  rename(
+    residence = town_residence
+  )
+
+GARH_NHCC_codebook <- GARH_NHCC_codebook %>%  
+  mutate(
+    Variable = ifelse(Variable == "town_residence", "residence", Variable)
+    )
+
+
+
+KATH_NHCC <- KATH_NHCC %>% 
+  rename(
+    residence = town_residence
+  )
+
+KATH_NHCC_codebook <- KATH_NHCC_codebook %>%  
+  mutate(
+    Variable = ifelse(Variable == "town_residence", "residence", Variable)
+    )
+
+
+```
+
+## Assessing common variables
+
+```{r}
+# Column names commonalities
+intersecting_colnames_KBTH_KATH <- intersect(colnames(KATH_NHCC), colnames(KBTH_NHCC))
+intersecting_colnames_KATH_GARH <- intersect(colnames(KATH_NHCC), colnames(GARH_NHCC))
+
+colnames_in_KATH_not_in_KBTH <- colnames(KATH_NHCC)[!colnames(KATH_NHCC) %in% colnames(KBTH_NHCC)]; colnames_in_KATH_not_in_KBTH
+colnames_in_KBTH_not_in_KATH <- colnames(KBTH_NHCC)[!colnames(KBTH_NHCC) %in% colnames(KATH_NHCC)]; colnames_in_KBTH_not_in_KATH
+
+colnames_in_KATH_not_in_GARH <- colnames(KATH_NHCC)[!colnames(KATH_NHCC) %in% colnames(GARH_NHCC)]; colnames_in_KATH_not_in_GARH
+colnames_in_GARH_not_in_KATH <- colnames(GARH_NHCC)[!colnames(KBTH_NHCC) %in% colnames(KATH_NHCC)]; colnames_in_GARH_not_in_KATH
+
+colnames_in_GARH_not_in_KBTH <- colnames(GARH_NHCC)[!colnames(GARH_NHCC) %in% colnames(KBTH_NHCC)]; colnames_in_GARH_not_in_KBTH
+colnames_in_KBTH_not_in_GARH <- colnames(KBTH_NHCC)[!colnames(KBTH_NHCC) %in% colnames(GARH_NHCC)]; colnames_in_KBTH_not_in_GARH
+
+
+combined_codebook <- rbind(
+  KBTH_NHCC_codebook %>% mutate(source = "KBTH"), 
+  KATH_NHCC_codebook %>% mutate(source = "KATH"), 
+  GARH_NHCC_codebook %>% mutate(source = "GARH")
+  ) %>% 
+  group_by(Variable) %>% 
+  mutate(
+    variable_count = n(), 
+    question_count = n_distinct(trimws(Question)), 
+    ans_typ_count = n_distinct(trimws(`Answer type`)), 
+    ans_opt_count = n_distinct(trimws(`Answer Options`))
+    ) %>% 
+  ungroup() 
+  
+
+
+non_intersecting_columns <- combined_codebook %>%  filter(variable_count < 3)
+table(non_intersecting_columns$Variable, non_intersecting_columns$source, useNA = "ifany")
+# View(non_intersecting_columns)
+
+non_intersecting_questions <- combined_codebook %>% 
+  filter(question_count > 1 & variable_count == 3) %>% 
+  group_by(Variable, Question) %>% 
+  summarise(N= n(), .groups = "drop")
+non_intersecting_questions
+
+
+non_intersecting_ans_typ <- combined_codebook %>% 
+  filter(ans_typ_count > 1) %>% 
+  group_by(Variable, `Answer type`) %>% 
+  summarise(N= n(), .groups = "drop")
+non_intersecting_ans_typ
+
+non_intersecting_ans_opt <- combined_codebook %>% 
+  filter(ans_opt_count > 1  & variable_count == 3) %>% 
+  group_by(Variable, `Answer Options`) %>% 
+  summarise(N= n(), .groups = "drop")
+non_intersecting_ans_opt
+
+
+```
+
+## Extra checks
+
+```{r}
+
+KBTH_HepB_HepC <- merge(
+  KBTH_NHCC %>% mutate(baseline = 1) %>% filter(trimws(Participant_Code) != "unknown"),
+  KBTH_HepB_DSQ %>% mutate(DSQ = 1) %>% filter(trimws(Participant_Code) != "unknown"),
+  by = "Participant_Code", 
+  all=TRUE
+  )
+
+table(KBTH_HepB_HepC$baseline, KBTH_HepB_HepC$DSQ, useNA = "ifany")
+
+table(
+  KBTH_HepB_HepC$Participant_Code[is.na(KBTH_HepB$DSQ) | is.na(KBTH_HepB_HepC$baseline) ], 
+  KBTH_HepB_HepC$DSQ[is.na(KBTH_HepB_HepC$DSQ) | is.na(KBTH_HepB_HepC$baseline) ], 
+  useNA = "ifany")
+
+
+table(KBTH_HepB_HepC$diagn001, KBTH_HepB_HepC$com04a,  KBTH_HepB_HepC$com05a, useNA = "ifany")
+
+```
+
+
+## Combining Hepatitis Data 
+```{r}
+
+variables_to_characters <- unique(non_intersecting_ans_typ$Variable)
+# Convert occup_other to character in all datasets
+for (var in variables_to_characters) {
+  if(var %in% colnames(KBTH_NHCC)) KBTH_NHCC <- KBTH_NHCC %>% mutate(!!sym(var) := as.character(!!sym(var)))
+  if(var %in% colnames(KATH_NHCC)) KATH_NHCC <- KATH_NHCC %>% mutate(!!sym(var) := as.character(!!sym(var)))
+  if(var %in% colnames(GARH_NHCC)) GARH_NHCC <- GARH_NHCC %>% mutate(!!sym(var) := as.character(!!sym(var)))
+}
+
+
+
+# Function to save labels for a dataset
+save_labels <- function(df) {
+  labels_list <- lapply(names(df), function(var) {
+    if (inherits(df[[var]], "labelled")) {
+      list(
+        var = var,
+        label = attr(df[[var]], "label"),
+        labels = attr(df[[var]], "labels")
+      )
+    } else {
+      NULL
+    }
+  })
+  labels_list <- Filter(Negate(is.null), labels_list)
+  return(labels_list)
+}
+
+# Save labels before stripping
+labels_KBTH <- save_labels(KBTH_NHCC)
+labels_KATH <- save_labels(KATH_NHCC)
+labels_GARH <- save_labels(GARH_NHCC)
+
+# Strip labels + convert to character for all
+strip_labels <- function(x) {
+  if (inherits(x, "labelled")) {
+    attr(x, "label") <- NULL
+    attr(x, "labels") <- NULL
+    x <- as.character(x)
+  }
+  return(x)
+}
+
+KBTH_NHCC[] <- lapply(KBTH_NHCC, strip_labels)
+KATH_NHCC[] <- lapply(KATH_NHCC, strip_labels)
+GARH_NHCC[] <- lapply(GARH_NHCC, strip_labels)
+
+
+
+# Combined the hepatitis data sets
+combined_hepatitis <- bind_rows(
+  KBTH_NHCC %>% mutate(Facility = "KBTH") %>% droplevels(), 
+  GARH_NHCC %>% mutate(Facility = "GARH")  %>% droplevels(), 
+  KATH_NHCC %>% mutate(Facility = "KATH")  %>% droplevels()
+)
+
+```
+
+# Standardizing common variables (HCC and Hepatitis)
+
+## HCC standardization
+```{r}
+# Standardizing HCC colnames
+KBTH_HCC_std <- KBTH_HCC_baseline %>% 
+  mutate(
+    data_entry = sec_a001,
+    hospital = sec_a002,
+    study_id = sec_a003,
+    initials = sec_a004,
+    age_known = sec_b001_001,
+    age = sec_b001_001, 
+    sex = sec_b003,
+    education = sec_b004,
+    occupation = sec_b005,
+    nationality = sec_b006,
+    other_nationality = sec_b006_001,
+    m_tribe = sec_b007,
+    p_tribe = sec_b008,
+    mstatus = sec_b009,
+    other_mstatus = sec_b009_001,
+    children = sec_b010,
+    other_demo = sec_b011,
+    height_known = sec_c001,
+    height = sec_c001_001,
+    weight_known = sec_c002,
+    weight = sec_c002_001,
+    bmi_known = sec_c003,
+    bmi = sec_c003_001,
+    smoking = sec_c004,
+    smoking_duration = sec_c004_001,
+    cigarettes = sec_c004_002,
+    alcohol = sec_c005,
+    alcohol_duration = sec_c005_001, 
+    alcohol_frequency = sec_c005_002, 
+    alcohol_type = sec_c005_003, 
+    other_alcohol = sec_c005_004, 
+    alcohol_volume = sec_c005_005, 
+    inject_drug = sec_c006,
+    weight_loss = sec_c007,
+    physical_activity = sec_c008, 
+    food_type = sec_c009, 
+    other_food = sec_c009_001, 
+    red_meat = sec_c010, 
+    dairy_product = sec_c011, 
+    vegetables = sec_c012, 
+    lifestyle_other = sec_c013, 
+    clinical_parameters = sec_d001, 
+    hepb = sec_d002, 
+    hepb_duration = sec_d002_001, 
+    hepb_treatment = sec_d002_002, 
+    hepb_treatment_duration = sec_d002_003, 
+    hepb_medication = sec_d002_004, 
+    hepb_vl_known = sec_d002_005, 
+    hepb_vl = sec_d005_006, 
+    hepb_afp_known = sec_d002_007, 
+    hepb_afp = sec_d002_008, 
+    hepc = sec_d003, 
+    hepc_duration = sec_d003_001, 
+    hepc_treatment = sec_d003_002, 
+    hepc_treatment_duration = sec_d003_003, 
+    hepc_medication = sec_d003_004, 
+    hepc_vl_known = sec_d003_005, 
+    hepc_vl = sec_d003_006, 
+    hep_b_c = sec_d004, 
+    diabetes = sec_d005, 
+    diabetes_duration = sec_d005_001, 
+    hypertension = sec_d006, 
+    dyslipidaemia = sec_d007, 
+    non_alcohol_fatty_liver_disease = sec_d008, 
+    alpha1_antitrypsin = sec_d009, 
+    other_clinical = sec_d010, 
+    haematemesis = haematemesis, 
+    medication = sec_e001, 
+    medications_number = sec_e002, 
+    medication_name = sec_e002_001, 
+    medication_start_date_known = sec_e002_002, 
+    medication_start_date = sec_e002_003, 
+    medication_end_date_known = sec_e002_004, 
+    medication_end_date = sec_e002_005, 
+    other_medication_history = sec_e003, 
+    fh_cancer = sec_f001, 
+    fh_number = sec_f002, 
+    fh_relation = sec_f002_001, 
+    fh_age_diagnosis_known = sec_f002_003, 
+    fh_age_diagnosis = sec_f002_004, 
+    fh_status = sec_f002_005, 
+    fh_age_death_known = sec_f002_006, 
+    fh_age_death = sec_f002_007, 
+    fh_death_cause = sec_f002_008, 
+    fh_other = sec_f003, 
+    fh_2_cancer = sec_g001, 
+    fh_2_number = sec_g002, 
+    fh_2_disease_type = sec_g002_001, 
+    fh_2_relation = sec_g002_002, 
+    fh_2_age_diagnosis_known = sec_g002_004, 
+    fh_2_age_diagnosis = sec_g002_005, 
+    fh_2_status = sec_g002_006, 
+    fh_2_age_death_known = sec_g002_007, 
+    fh_2_age_death = sec_g002_008, 
+    fh_2_death_cause = sec_g002_009, 
+    fh_2_other = sec_g003, 
+    tumor_type = sec_h001, 
+    hc_subtype = sec_h001_001, 
+    ibd_subtype = sec_h001_002, 
+    other_subtype = sec_h001_003, 
+    pretext_staging = sec_h002, 
+    other_pretext_staging = sec_h002_001, 
+    metastatis_diagnosis = sec_h003, 
+    metastatis_diagnosis_sites = sec_h003_001, 
+    metastatis_diagnosis_other_sites = sec_h003_002, 
+    current_metastatis = sec_h004, 
+    current_metastatis_sites = sec_h004_001, 
+    current_metastatis_other_sites = sech_h004_002, 
+    tnm = sec_h005, 
+    pathological_grade = sec_h006, 
+    pathological_other_grade = sec_h006_001, 
+    immunohistochemistry = sec_h007, 
+    other_xtics = sec_h008, 
+    initial_symptoms = sec_h009, 
+    diagnosis_year = sec_h010, 
+    diagnosis_circumstance = sec_h011, 
+    other_liver_history = sec_h012, 
+    neoadjuvant_treatment = sec_i001, 
+    neoadjuvant_chemo = sec_i002, 
+    cytotoxic_chemo = sec_i003, 
+    other_cytotoxic_chemo = sec_i003_001, 
+    cytotoxic_chemo_date = sec_i003_002, 
+    targetted_therapy = sec_i004, 
+    other_targetted_therapy = sec_i004_001, 
+    targetted_therapy_date = sec_i004_002, 
+    radiation = sec_i005, 
+    other_radiation = sec_i005_001, 
+    radiation_date = sec_i005_002, 
+    radiation_dose = sec_i005_003, 
+    other_treatment = sec_i006, 
+    blood_taken = sec_j001, 
+    blood_taken_date_known = sec_j001_001, 
+    blood_taken_date = sec_j001_002, 
+    buccal_swab = sec_j002, 
+    buccal_swab_date_known = sec_j002_001_1, 
+    buccal_swab_date = sec_j002_002, 
+    liver_tissue_obtained = sec_j003, 
+    liver_tissue_date_known = sec_j003_001, 
+    liver_tissure_date = sec_j003_002, 
+    non_neoplastic = sec_j004, 
+    non_neoplastic_date_known = sec_j004_001, 
+    non_neoplastic_date = sec_j004_002, 
+    non_neoplastic_from_tumor = sec_j004_003,
+    tissue_type=sec_j005,
+    specify_tissue=sec_j005_001,
+    preservation_method=sec_j006,
+    sample_Procurement=sec_j007,
+    tumor_tissue_type=sec_j008,
+    hcc_add_findings=sec_j009,
+    other_hcc_findings=sec_j009_001,
+    tumor_focality=sec_j010,
+    tumor_grade=sec_j011,
+    necrosis_present=sec_j012,
+    incomplete_necrosis=sec_j012_001,
+    injury_date_known=sec_j013,
+    injury_date=sec_j013_001,
+    surgery_date_known=sec_j014,
+    surgery_date=sec_j014_001,
+    intoxicated=sec_j015
+    
+  ) %>% 
+  
+  mutate(
+    study_group = "HCC", 
+    Facility = "KBTH", 
+    tribe = ifelse(trimws(m_tribe) = trimws(p_tribe), m_tribe, 
+                   paste0(
+                     ifelse(!is.na(m_tribe), paste0(, m_tribe, "; "), ""),
+                     ifelse(!is.na(p_tribe), paste0(, p_tribe), "")
+                     )
+                   )
+    )
+
+```
+
+
+## Hepatitis Standardization
+```{r}
+# Standardizing Hepatitis Colnames
+combined_hepatitis_std <- combined_hepatitis %>% 
+  mutate(
+    sex = sex,
+    other_sex = sex_other,
+    age = age_unit,
+    age_in_years = age_years,
+    age_in_months = age_months,
+    age_in_weeks = age_weeks,
+    age_in_days = age_days,
+    education = educ,
+    other_education = educ_other,
+    occupation= occup,
+    other_occupation = occup_other,
+    job = job,
+    nationality = nationality,
+    residence = residence,
+    tribe = tribe,
+    mstatus = mstatus,
+    other_mstatus = mstatus_other,
+    children_known = children_known,
+    number_of_children = children,
+    monthly_income = hhincome_1,
+    income_unit = hhincome_unit,
+    income = hhincome,
+    child_data = child_data_status,
+    m_alive = cg101,
+    m_tribe = cg102,
+    m_occupation = cg103,
+    m_job = cg104,
+    f_alive = cg201,
+    p_tribe = cg202,
+    p_occupation = cg203,
+    f_job = cg204,
+    primary_caregviver = cg301,
+    caregviver_relation = cg302,
+    caregviver_occupation = cg303,
+    other_caregviver_occupation = cg304,
+    weight_known = ant001,
+    weight = ant001_1,
+    height_known = ant002,
+    height = ant002_1,
+    bsa_known = ant003,
+    bsa = ant003_1,
+    bmi_known = ant004,
+    bmi = ant004_1,
+    muac_known = ant005,
+    muac = ant005_1,
+    sbp_known = ant006,
+    sbp = ant006_1,
+    dbp_known = ant007,
+    dbp = ant007_1,
+    pulse_known = ant008,
+    pulse = ant008_1,
+    respiratory_rate_known = ant009,
+    respiratory_rate = ant009_1,
+    temperature_known = ant010,
+    temperature = ant010_1,
+    spO2_known = ant011,
+    spO2 = ant011_1,
+    pain_score = ant012,
+    smoking = lfst001,
+    smoking_duration_known = lfst001a1,
+    smoking_duration = lfst001a2,
+    cigarette_known = lfst001b1,
+    cigarette = lfst001b2,
+    alcohol = lfst002,
+    alcohol_frequency = lfst002a,
+    alcohol_type = lfst002b,
+    other_alcohol = lfst002b_other,
+    alcohol_volume = lfst002c,
+    other_volume = lfst002c_other,
+    alcohol_duration = lfst002d2,
+    inject_drug = lfst003,
+    injection_duration = lfst003b1,
+    duration_in_years = lfst003b2,
+    physical_activity = lfst004,
+    strenous_activity = lfst004a,
+    moderate_activity = lfst004b,
+    mild_activity = lfst004c,
+    food_type = lfst005,
+    red_meat = lfst005a,
+    dairy_product = lfst005b,
+    vegetables = lfst005c,
+    fatty_product = lfst005d,
+    smoked_fish_product = lfst005e,
+    hypertension = com01a,
+    duration_hypertension = com01b1,
+    duration_in_years = com01b2,
+    duration_in_months = com01b3,
+    trisomy_21 = com02a,
+    duration_of_trisomy = com02b1,
+    duration_in_years = com02b2,
+    duration_in_years = com02b2,
+    duration_in_months = com02b3,
+    hiv_infection = com03a,
+    hiv_duration = com03b1,
+    duration_in_years = com03b2,
+    duration_in_months = com03b3,
+    hepc = com04a,
+    hepc_duration_known = com04b1,
+    duration_in_years = com04b2,
+    duration_in_months = com04b3,
+    hepb = com05a,
+    hepb_duration_known = com05b1,
+    duration_in_years = com05b2,
+    duration_in_months = com05b3,
+    diabetes = cam06a,
+    diabetes_duration_known = com06b1,
+    duration_in_years = com06b2,
+    duration_in_months = com06b3,
+    dyslipidaemia = cam07a,
+    dyslipidemia_duration_known = com07b1,
+    duration_in_years = com07b2,
+    duration_in_months = com07b3,
+    other_comorbidities = com99a,
+    number_of_other_comorbidities = com99b,
+    name_of_other_comorbidities = com99b1,
+    duration_of_other_comorbidities_known = com99b2,
+    duration_in_years = com99b3,
+    duration_in_months = com99b4,
+    fh_cancer = histcan01a,
+    cancer_type = histcan01b,
+    other_cancers = prevcan09b_other,
+    blood_transfusion = bld01,
+    number_of_blood_transfusions = bld02,
+    date_of_first_most_recent_transfusion_known = bld02a1,
+    date_of_first_most_recent_transfusion = bld02a2,
+    date_of_second_most_recent_transfusion_known = bld02b1,
+    date_of_second_most_recent_transfusion = bld02b2,
+    date_of_third_most_recent_transfusion_known = bld02c1,
+    date_of_third_most_recent_transfusion = bld02c2,
+    date_of_fourth_most_recent_transfusion_known = bld02d1,
+    date_of_fourth_transfusion = bld02d2,
+    date_of_fifth_transfusion_known = bld02e1,
+    date_of_fifth_transfusion = bld02e2,
+    fh_cancer = fh001,
+    fh_number = fh002, 
+    fh_lineage = fh002_102,
+    fh_relation = fh002_103, 
+    fh_age_diagnosis_known = fh002_104, 
+    fh_age_diagnosis = fh002_105, 
+    fh_status = fh002_106, 
+    fh_age_death_known = fh002_107, 
+    fh_age_death = fh002_108, 
+    fh_other = fh002_199, 
+    symp_initial = symp001,
+    symp_details = symp002,
+    symp_name = symp002a,
+    symp_duration_known = symp002b,
+    symp_duration = symp002c,
+    phe_examination = phe001,
+    pallor = phe003,
+    jaundice = phe004,
+    cyanosis = phe005,
+    edema = phe006,
+    dehydration = phe007,
+    lymph_node = phe008,
+    lymph_node_details = phe008a,
+    lymph_node_location = phe088a1,
+    lymph_node_size = phe088a2,
+    cardiovascular_exam = phe009,
+    abnormal_cardiovascular_exam = phe009a,
+    abdomen_exam = phe010,
+    abnormal_abdomen_exam = phe010a,
+    hepatomegaly = phe011,
+    hepatomegaly_size_known = phe011a1,
+    hepatomegaly_size = phe011a2,
+    midclavicular_line = phe011b1,
+    midclavicular_line_size = phe011b2,
+    splenomegaly = phe012,
+    splenomegaly_size_known = phe012a1,
+    splenomegaly_size = phe012a2,
+    chest_exam = phe013,
+    abnormal_chest_exam = phe013a,
+    skin_exam = phe014,
+    abnormal_skin_exam = phe014a,
+    central_nervous_system_exam = phe015,
+    abnormal_central_nervous_system_exam = phe015a,
+    musculoskeletal_system_exam = phe016,
+    abnormal_musculoskeletal_system_exam = phe016a,
+    other_physical_exam = phe099,
+    other_physical_findings = phe099a,
+    medication = med100,
+    medication_details = med101,
+    medication_name = med101a,
+    medication_date_known = med101b1,
+    medication_date = med101b2,
+    sample_taken = bs001,
+    sample_taken_details = b101,
+    sample_type = b101a,
+    other_sample_type = b101a_other,
+    sample_date_known = b101b1,
+    sample_date = b101b2,
+    vital_status = vital001,
+    cause_of_death = vital002a,
+    other_cause_of_death = vital002a_other,
+    death_date_known = vital002b1,
+    death_date = vital002b2,
+    disease_status = vital003, 
+    hepb = com05a,
+    hepc = com04a,
+
+  ) %>% 
+  
+# Add study group identifier
+  mutate(study_group = "NHCC_Hep") 
+```
+
+
+
+
+```{r}
+# Data checks
+#attributes(KBTH_HCC_common$age)
+#attributes(combined_hepatitis_common$age)
+# cbind(table(combined_hepatitis_std$age, useNA = "ifany"))
+# Check the class of the data
+#map(KBTH_HCC_common, class)
+#map(combined_hepatitis_common, class)
+```
+
+# Combining standardizaed HCC and Hepatitis data 
+
+## Age checks
+```{r}
+# Standardizing age for combined_hepatitis_std
+
+combined_hepatitis_std <- combined_hepatitis_std %>% 
+  mutate(
+    age = case_when(
+      age_unit == "Age in years"   ~ as.numeric(age_in_years),
+      age_unit == "Age in months"  ~ as.numeric(age_in_months) / 12,
+      age_unit == "Age in weeks"   ~ as.numeric(age_in_weeks) / 52,
+      age_unit == "Age in days"    ~ as.numeric(age_in_days) / 365.2,
+      age_unit == "Age is unknown" ~ 888,
+      is.na(age_unit)              ~ 999
+    )
+  )
+
+
+
+
+
+table(combined_hepatitis_std$age)
+# Convert occupation to character 
+KBTH_HCC_std <- KBTH_HCC_std %>%
+  mutate(occupation = as.character(occupation))
+
+combined_hepatitis_std <- combined_hepatitis_std %>%
+  mutate(occupation = as.character(occupation))
+
+
+# Convert food_type to character
+KBTH_HCC_std <- KBTH_HCC_std %>%
+  mutate(food_type = as.character(food_type))
+
+combined_hepatitis_std <- combined_hepatitis_std %>%
+  mutate(food_type = as.character(food_type))
+
+```
+
+
+## Hepatitis B and C checks in HCC
+
+```{r}
+# Hepatitis status in HCC
+
+KBTH_HCC_std <- KBTH_HCC_std %>% 
+  mutate(
+    hepb = factor(
+      ifelse(hep_b_c == "Yes", 1, hepb),
+      levels = c(1,2,3), 
+      labels = c("Yes", "No", "Unknown/Not specified")
+    ),
+    
+    hepc = factor(
+      ifelse(hep_b_c == "Yes", 1, hepc),
+      levels = c(1,2,3), 
+      labels = c("Yes", "No", "Unknown/Not specified")
+    )
+  )
+
+
+```
+
+
+## common variables in HCC and Hepatitis data 
+```{r}
+
+# Appending Standardized data together
+# Identify common names in both
+
+common_vars <- Reduce(intersect, list(
+  colnames(KBTH_HCC_std),
+  colnames(combined_hepatitis_std)
+  ))
+
+#common_vars <- intersect(names(KBTH_HCC_std), names(combined_hepatitis_std)) # Only two
+
+list(common_vars)
+
+
+# Create each dataset for only common variables
+KBTH_HCC_common <- KBTH_HCC_std %>% 
+  select(all_of(common_vars)) %>%
+  mutate(participant_id = Participant_Code)
+
+
+combined_hepatitis_common <- combined_hepatitis_std %>% 
+  select(all_of(common_vars)) %>%
+  mutate(participant_id = Participant_Code)
+
+
+```
+
+
+# Variable classifications
+```{r}
+# Convert numeric variables
+vars_numeric <- c("age", "children", "height", "weight", "bmi",
+                  "smoking_duration", "alcohol_duration",
+                  "fh_age_diagnosis", "fh_age_death")
+
+KBTH_HCC_common[vars_numeric] <- lapply(KBTH_HCC_common[vars_numeric], as.numeric)
+
+
+# Convert all character variables
+vars_character <- c("m_tribe", "p_tribe", "alcohol_type", "fh_number")
+
+KBTH_HCC_common[vars_character] <- lapply(KBTH_HCC_common[vars_character], as.character)
+
+
+# Convert logical to character variables
+
+vars_logical_to_character <- c("other_mstatus", "other_alcohol",
+                               "medication_name", "fh_other")
+
+KBTH_HCC_common[vars_logical_to_character] <- lapply(KBTH_HCC_common[vars_logical_to_character], as.character)
+combined_hepatitis_common[vars_logical_to_character] <- lapply(combined_hepatitis_common[vars_logical_to_character], as.character)
+
+```
+
+
+## harmonization of the two data frame
+```{r eval = FALSE}
+# Function to convert labelled variables to plain character or numeric
+clean_dataset <- function(df) {
+  df %>%
+    mutate(across(everything(), ~ {
+      if (haven::is.labelled(.)) {
+        # Convert factor to character
+        if (is.character(as_factor(.))) {
+          return(as.character(as_factor(.)))
+        } else {
+          return(as.numeric(.))
+        }
+      } else {
+        return(.)
+      }
+    }))
+}
+
+# Apply to all the study groups
+KBTH_HCC_common <- clean_dataset(KBTH_HCC_common)
+combined_hepatitis_common <- clean_dataset(combined_hepatitis_common)
+
+assertthat::are_equal(colnames(KBTH_HCC_common), colnames(combined_hepatitis_common))
+
+
+common_cols <- intersect(colnames(KBTH_HCC_common), colnames(combined_hepatitis_common))
+
+template_classes <- sapply(KBTH_HCC_common[common_cols], class)
+
+# Harmonize all the column types
+harmonize_types <- function(df, template) {
+  for (col in names(template)) {
+    if (col %in% names(df)) {
+      class_target <- template[[col]][1]
+      df[[col]] <- switch(class_target,
+                          "character" = as.character(df[[col]]),
+                          "numeric" = as.numeric(df[[col]]),
+                          "integer" = as.integer(df[[col]]),
+                          df[[col]])
+    }
+  }
+  df
+}
+
+combined_hepatitis_common <- harmonize_types(combined_hepatitis_common, template_classes)
+```
+
+
+## Combined the HCC and Hepatitis data
+```{r}
+# Combine the study groups
+ALIVE_combined <- rbind( 
+  KBTH_HCC_common,
+  combined_hepatitis_common
+)
+
+cbind(table(ALIVE_combined$Facility,ALIVE_combined$study_group, useNA = "ifany"))
+
+```
+
+
+
+# Cleaning up Combined ALIVE data
+## Age group
+```{r}
+# Re-categorizing combined data names
+# Recategorizing age
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    age_category = case_when(
+      age %in% c(20:29) ~ "20-29",
+         age %in% c(30:39) ~ "30-39",
+         age %in% c(40:49) ~ "40-49",
+         age %in% c(50:59) ~ "50-59",
+         age %in% c(60:69) ~ "60-69",
+         age %in% c(70:99) ~ "70+", 
+         is.na(age) ~ "Unknown"
+    ),
+    age_category =
+       factor(
+         age_category,
+         levels = c(
+           "20-29", "30-39", "40-49",
+           "50-59", "60-69", "70+",
+           "Unknown"
+           ),
+         labels = c(
+           "20-29", "30-39", "40-49",
+           "50-59", "60-69", "70+",
+           "Unknown"
+           )
+         )
+  )
+  
+
+table(ALIVE_combined$age_category, ALIVE_combined$study_group, useNA = "ifany")
+
+```
+## Highest education
+```{r}
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    educ_category= 
+      case_when(
+      education %in% c("None", "Non-formal") ~ "No formal education",
+         education %in% c("Primary") ~ "Primary",
+         education %in% c("Secondary") ~ "Secondary",
+         education %in% c("Tertiary", "Post secondary (Non-Tertiary)") ~ "Tertiary",
+         education %in% c("Unknown/Not specified", "Unknown") ~ "Unknown/Not specified",
+         is.na(education) ~ "Unknown/Not specified"
+         ),
+     educ_category =
+       factor(
+         educ_category,
+         levels = c(
+           "No formal education", "Primary", "Secondary",
+           "Tertiary", "Unknown/Not specified"
+           ),
+         labels = c(
+          "No formal education", "Primary", "Secondary",
+           "Tertiary", "Unknown/Not specified"
+    )
+  )
+)
+
+table(ALIVE_combined$educ_category, ALIVE_combined$study_group, useNA = "ifany")
+```
+
+
+## Marital status
+```{r}
+# Recategorize Marital status
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(  
+    mstatus_category = 
+      case_when(
+        trimws(as.character(mstatus)) %in% c("Single", "Single (never married)") ~ "Single",
+        trimws(as.character(mstatus)) %in% c("Married", "Currently married") ~ "Married",
+        trimws(as.character(mstatus)) %in% c("Separated") ~ "Separated",
+        trimws(as.character(mstatus)) %in% c("Divorced") ~ "Divorced",
+        trimws(as.character(mstatus)) %in% c("Widowed", "Widowed Other (Specify)") ~ "Widowed",
+        trimws(as.character(mstatus)) %in% c("Cohabiting", "Co-habiting") ~ "Cohabiting",
+        trimws(as.character(mstatus)) %in% c("Unknown/Not specified", "Unknown") ~ "Unknown/Not specified",
+        is.na(trimws(as.character(mstatus))) ~ "Unknown/Not specified"
+         ),
+     mstatus =
+       factor(
+         mstatus,
+         levels = c(
+           "Currently married", "Single (never married)", "Cohabiting",
+           "Separated", "Divorced", "Widowed", "Unknown/Not specified"
+           ),
+         labels = c(
+           "Currently married", "Single (never married)", "Cohabiting",
+           "Separated", "Divorced", "Widowed", "Unknown/Not specified"
+           )
+         )
+)
+
+  
+table(ALIVE_combined$mstatus_category, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(ALIVE_combined$mstatus, useNA = "ifany"))
+cbind(table(combined_hepatitis_std$mstatus, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$mstatus, useNA = "ifany"))
+```
+
+
+## Smoking history
+```{r}
+# Recatorize smoking status
+ALIVE_combined <- ALIVE_combined %>%
+  mutate(
+    smoking_category = replace_na(smoking, "Unknown/Not specified"),
+    
+    smoking = factor(smoking, levels = c(
+      "Never smoked",
+      "Ex-smoker", 
+      "Active smoker", 
+      "Passive smoker",
+      "Unknown/Not specified"
+    )),
+    
+    ever_smoked = case_when(
+      smoking %in% c("Ex-smoker", "Active smoker", "Passive smoker") ~ "Yes",
+      TRUE ~ "No/Unknown"
+    ),
+    
+    ever_smoked = factor(ever_smoked, levels = c("No/Unknown", "Yes"))
+  )
+
+table(ALIVE_combined$smoking_category, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$smoking, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$smoking, useNA = "ifany"))
+
+```
+
+
+
+## Alcohol consumption
+```{r}
+# Recategorize alcohol consumption
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    alcohol_category = factor(
+      case_when(
+        alcohol %in% c("Yes", "Current", "Former") ~ "Yes",
+        alcohol %in% c("No", "Never") ~ "No", 
+        alcohol %in% c("Unknown/Not specified") ~ "No",
+        is.na(alcohol) ~ "No"
+        ),
+      levels = c("No", "Yes")
+      
+    )
+  )
+
+      
+table(ALIVE_combined$alcohol_category, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$alcohol, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$alcohol, useNA = "ifany"))
+
+```
+
+## Drug injections
+```{r}
+# Recategorize drug injection
+ALIVE_combined = ALIVE_combined %>% 
+  mutate(
+    inject_drug_category = factor(
+      ifelse(inject_drug == "Yes", "Yes", "No/Unknown"),
+      levels = c("No/Unknown", "Yes"))
+         
+    
+  )
+table(ALIVE_combined$inject_drug_category, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$inject_drug, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$inject_drug, useNA = "ifany"))
+
+```
+
+
+## Food group consumptions
+```{r}
+# Recategorize prorein consumption
+consumption_levels <- c(
+   "High", "Medium", "Low",
+  "Don't consume", "Unknown/Not specified"
+)
+
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    # Red meat consumption
+    red_meat = case_when(
+      red_meat %in% c("1. Very high", "Very high", "2. High", "High") ~ "High",
+      red_meat %in% c("3. Medium", "Medium") ~ "Medium",
+      red_meat %in% c("4. Low", "Low", "5. Very low", "Very low") ~ "Low",
+      red_meat %in% c("I don't consume", "6. Does not consume") ~ "Don't consume",
+      is.na(red_meat) ~ "Unknown/Not specified", TRUE ~ "Unknown/Not specified"
+    ), 
+    red_meat = factor(red_meat, levels = consumption_levels),
+
+    # Dairy product consumption
+    dairy_product = case_when(
+      dairy_product %in% c("1. Very high", "Very high", "2. High", "High") ~ "High",
+      dairy_product %in% c("3. Medium", "Medium") ~ "Medium",
+      dairy_product %in% c("4. Low", "Low", "5. Very low", "Very low") ~ "Low",
+      dairy_product %in% c("I don't consume", "6. Does not consume") ~ "Don't consume",
+      is.na(dairy_product) ~ "Unknown/Not specified", TRUE ~ "Unknown/Not specified"
+    ),
+    dairy_product = factor(dairy_product, levels = consumption_levels),
+
+    # Vegetable consumption
+    vegetables = case_when(
+      vegetables %in% c("1. Very high", "Very high", "2. High", "High") ~ "High",
+      vegetables %in% c("3. Medium", "Medium") ~ "Medium",
+      vegetables %in% c("4. Low", "Low", "5. Very low", "Very low") ~ "Low",
+      vegetables %in% c("I don't consume", "6. Does not consume") ~ "Don't consume",
+      is.na(vegetables) ~ "Unknown/Not specified", TRUE ~ "Unknown/Not specified"
+    ),
+    vegetables = factor(vegetables, levels = consumption_levels)
+  )
+
+
+
+ALIVE_combined$red_meat[is.na(ALIVE_combined$red_meat)] = "Unknown/Not specified"
+ALIVE_combined$vegetables[is.na(ALIVE_combined$vegetables)] = "Unknown/Not specified"
+ALIVE_combined$dairy_product[is.na(ALIVE_combined$dairy_product)] = "Unknown/Not specified"
+
+
+table(ALIVE_combined$vegetables, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$vegetables, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$vegetables, useNA = "ifany"))
+
+# Collapse to High, Medium, Low, Don't Consume, Unknown
+```
+
+
+## Comorbidities
+```{r}
+# Recategorize clinical variables
+
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    
+  # Hepatitis B
+    hepb = if_else(is.na(hepb) | hepb == "Unknown","Unknown/Not specified",hepb),
+    hepb = factor(
+      trimws(hepb),
+      levels = c("No", "Yes","Unknown/Not specified"),
+      labels = c("No", "Yes","Unknown/Not specified")),
+    
+    # Hepatitis C
+    hepc = if_else(is.na(hepc) | hepc == "Unknown","Unknown/Not specified",hepc),
+    hepc = factor(
+      trimws(hepc),
+      levels = c("No", "Yes","Unknown/Not specified"),
+      labels = c("No", "Yes","Unknown/Not specified")),
+    
+    
+    # Dyslipidaemia
+    dyslipidaemia = if_else(is.na(dyslipidaemia) | dyslipidaemia == "Unknown","Unknown/Not specified",dyslipidaemia),
+    dyslipidaemia = factor(
+      trimws(dyslipidaemia),
+      levels = c("No", "Yes","Unknown/Not specified"),
+      labels = c("No", "Yes","Unknown/Not specified")),
+    
+    
+    # Diabetes
+    diabetes = if_else(is.na(diabetes) | diabetes == "Unknown","Unknown/Not specified",diabetes),
+    diabetes = factor(
+        trimws(diabetes),
+        levels = c("No", "Yes","Unknown/Not specified"),
+        labels = c("No", "Yes","Unknown/Not specified")),
+    
+    # Hypertension
+    hypertension = if_else(is.na(hypertension) | hypertension == "Unknown","Unknown/Not specified",hypertension),
+    hypertension = factor(
+        trimws(hypertension),
+        levels = c("No", "Yes","Unknown/Not specified"),
+        labels = c("No", "Yes","Unknown/Not specified")),
+    
+    
+    # Medication 
+    medication = if_else(is.na(medication) | medication == "Unknown","Unknown/Not specified",medication ),
+    medication = factor(
+      trimws(medication),
+      levels = c("No", "Yes","Unknown/Not specified"),
+      labels = c("No", "Yes","Unknown/Not specified"))
+)
+
+# attributes(ALIVE_combined$hepb)
+# attributes(ALIVE_combined$hepc)
+# attributes(ALIVE_combined$hypertension)
+
+
+table(ALIVE_combined$dyslipidaemia, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$dyslipidaemia, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$dyslipidaemia, useNA = "ifany"))
+
+
+
+# Check for the rest
+
+table(ALIVE_combined$diabetes, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$diabetes, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$diabetes, useNA = "ifany"))
+
+
+table(ALIVE_combined$hypertension, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$hypertension, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$hypertension, useNA = "ifany"))
+
+
+table(ALIVE_combined$medication, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$medication, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$medication, useNA = "ifany"))
+
+
+table(ALIVE_combined$dyslipidaemia, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$dyslipidaemia, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$dyslipidaemia, useNA = "ifany"))
+
+table(ALIVE_combined$hepc, ALIVE_combined$study_group, useNA = "ifany")
+
+cbind(table(combined_hepatitis_std$hepc, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$hepc, useNA = "ifany"))
+
+
+table(ALIVE_combined$hepb, ALIVE_combined$study_group, useNA = "ifany")
+
+cbind(table(combined_hepatitis_std$hepb, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$hepb, useNA = "ifany"))
+
+
+
+```
+## Family history of cancer
+```{r}
+# Recategorize family history of cancer
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    
+  # Family history of liver cancer
+  fh_cancer = if_else(is.na(fh_cancer) | fh_cancer == "Don't know","Unknown/Not specified",fh_cancer),
+    fh_cancer = factor(
+      trimws(fh_cancer),
+      levels = c("No", "Yes","Unknown/Not specified"),
+      labels = c("No", "Yes","Unknown/Not specified"))
+  )
+
+table(ALIVE_combined$fh_cancer, ALIVE_combined$study_group, useNA = "ifany")
+      
+cbind(table(combined_hepatitis_std$fh_cancer, useNA = "ifany"))
+cbind(table(KBTH_HCC_std$fh_cancer, useNA = "ifany"))
+
+```
+
+## Occupation
+```{r warning=FALSE}
+# Recategorize occupation
+
+occupation_classification <- list(
+  
+  Unemployed = c(
+    "student", "unemployed", "currently unemployed", "n/a",
+    "child (not applicable)",  "unemployed"
+    ),
+  
+  Agriculture_Natural_Resources = c(
+    "farmer", "trader/farmer", "tractor operator", "extension officer", 
+    "florist", "fisherman", "yam seller", "yam businessman", 
+    "cattle farmer", "small scale mining", "miner", 
+    "agriculture (farmers, fishermen etc.)", "agriculture", 
+    "Retired district director (Agric)"
+  ),
+  Trades_Skilled_Labor = c(
+    "carpenter", "carpentry", "mason", "plumber", "tiler", "electrician", 
+    "auto-electrician", "mechanic", "vulcanizer", "electric welder", 
+    "quarryman", "painter/interior decorator", "painter/ interior decorator", "seamstress", 
+    "constructor", "baker/ tailor", "driver", "gardener", 
+    "forklift operator", "tailor", "skilled manual labor (carpentry, masonry, etc.)"
+  ),
+  Sales_Business = c(
+    "trader", "businessman", "sales person", "hawker", "car seller", 
+    "wood trader", "gas attendant", "mobile phone repairer", 
+    "momo agent", "butcher", "food seller", "food vendor", 
+    "food vendor", "fruit seller", "paint seller", 
+    "sales and services (traders etc.)"
+  ),
+  Public_Civil_Services = c(
+    "policeman", "police officer", "fire service man", "prison officer", 
+    "security man", "security man", "civil servant", "public servant", 
+    "municipal director,bawku", "auditor"
+  ),
+  Hospitality_Food_Services = c(
+    "food vendor", "food seller", "kenkey seller", "baker", "caterer", 
+    "operates a food joint", "chop bar attendant", "cook/ driver", 
+    "kenkey seller", "kenkey seller", "operates a food joints"
+  ),
+  Professional_Technical_Services = c(
+    "teacher", "it technician", "software developer", "nutritionist", 
+    "enrolled nurse", "drug technician", "land review planner", 
+    "customer service executive", "arabic teacher", 
+    "contractor", "retired mechanical engineer", 
+    "retired health worker", "retired electrician", 
+    "retired district director (agric)", 
+    "retired health worker", "retired mechanical engineer", 
+    "professional/ technical/ managerial (accountants, consultants, doctors etc.)",
+    "Professional/ technical/ managerial (Accountants, Consultants, Doctors etc.)",
+    "Professional/ technical/ managerial (Accountants/Consultants/Doctors etc.)"
+  ),
+  Unskilled_Labour = c(
+    "cleaner", "labourer", "porter", "construction worker", 
+    "security man", "security man", "factory hand", 
+    "farmer/ security man", "unskilled manual labor (laborer etc.)", 
+    "unskilled manual labor"
+  ),
+  Clerical_Support_Services = c(
+    "works at a printing press", "hall assistant", "clerical (secretary, etc.)"
+  ),
+  Others_Unclassified = c(
+    "missionary", "pastor", "reverend minister", "preacher", 
+    "service personnel", "retired",  "unknown", "other (specify)"
+  )
+)
+
+# Enhanced Classification Function with Debugging
+classify_occupation <- function(occupation) {
+  if (is.na(occupation) || trimws(occupation) == "") return("Unknown")
+  occupation_raw <- occupation  # Preserve raw value for debugging
+  occupation <- trimws(tolower(occupation))  # Convert to lowercase and trim
+  for (group in names(occupation_classification)) {
+    if (any(sapply(occupation_classification[[group]], function(x) grepl(tolower(x), occupation)))) {
+      return(group)
+    }
+  }
+  warning(paste("Unmatched occupation (raw value):", occupation_raw))
+  return("Others_Unclassified")  # Default for unmatched
+}
+
+# Apply Classification Function to Dataset
+ALIVE_combined$occup <- sapply(ALIVE_combined$occupation, classify_occupation)
+
+# Factorize the Resulting Occupation Variable
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    occup = case_when(
+      str_detect(occupation, "Professional") ~ "Professional_Technical_Services",
+      str_detect(occupation, "Retired district director") ~ "Agriculture_Natural_Resources",
+      is.na(occup) ~ "Unemployed",
+      TRUE ~ occup 
+      ),
+    occup = factor(
+      occup, 
+      levels = c(
+        "Unemployed", 
+        "Agriculture_Natural_Resources",
+        "Trades_Skilled_Labor", 
+        "Sales_Business",
+        "Public_Civil_Services",
+        "Hospitality_Food_Services", 
+        "Professional_Technical_Services", 
+        "Unskilled_Labour",
+        "Clerical_Support_Services",
+        "Others_Unclassified"
+        )
+    )
+  )
+
+
+
+
+
+table(ALIVE_combined$occup, ALIVE_combined$study_group, useNA = "ifany")
+cbind(table(ALIVE_combined$occupation[ALIVE_combined$occup == "Others_Unclassified"], useNA = "ifany"))
+cbind(table(ALIVE_combined$occupation[is.na(ALIVE_combined$occup)], useNA = "ifany"))
+
+cbind(table(KBTH_HCC_std$occupation, useNA = "ifany"))
+cbind(table(combined_hepatitis_std$occupation, useNA = "ifany"))
+
+
+```
+
+## Tribes
+```{r tribes, warning=FALSE, message=FALSE, include=FALSE, echo=FALSE}
+# cbind(table(ALIVE_combined$nationality))
+
+# Recategorize nationality
+tribes <- unique(
+  (ALIVE_combined$m_tribe), unique(
+    (ALIVE_combined$p_tribe)
+  )
+  )
+
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    Nationality = factor(
+      Ghanaian = "Ghanaian" ~ "Ghanaian",
+      Non_Ghanaian = "Afaghanistan" ~ "Afaghanistan",
+      Unknown = "Unknown/Not specified" ~ "Unknown/Not specified",
+      Others/Specify = c("Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bangladesh"                                             
+    )
+  )
+)
+
+classification <- list(
+  Akan = c(
+    "Akan", "Akyem", "Akyem ( Akan )", "Akyem Krobo", "Asante", "Ashanti", 
+    "Akuapem", "Akwapem", "Bono", "Fante", "Kwahu", "Nzema", "Wassa", "Ahanta",
+    "Bowiri", "Asante", "Nzema", "Wassa","Awutu Senya"
+  ),
+  Mole_Dagbani = c(
+    "Dagomba", "Gonja", "Kusasi", "Kusaasi", "Frafra", "Dagaati", "Kokomba", 
+                   "Bulsa","Builsa", "Busanga", "Kasena", "Gusuma", "Bisala", 
+                   "Basare", "Fumbisi", "Samere"
+  ),
+  Ewe = c("Ewe"),
+  Ga_Adangbe = c(
+    "Ga", "Dangbe", "Ga-Adangbe", "Krobo", 
+                 "Krobo ( Ga- Adangbe)", "Larteh", "Ada"
+  ), 
+  Guan = c("Efutu", "Guan", "Awutu Senya", "Buya", "Bowiri"),
+  Other_Ghanaian = c("Northerner", "Northern-Ghana", "Northern Ghana","Northerner", "Northerner (from Bawku)", 
+                     "From Bawku", "From Wa", "Lawra", "Yendi", "From Ntotroso in Ahafo Region",
+                     "From Dunkwaw", "Sandema", "Zebila"),
+  Non_Ghanaian = c(
+    "Fulani", "Limba", "Togolese", "Liberian", "Niger", "Bakossi", "N/A"
+  )
+)
+
+class_list = c(
+  classification$Akan,
+  classification$Mole_Dagbani,
+  classification$Ewe,
+  classification$Ga_Adangbe,
+  classification$Guan,
+  classification$Other_Ghanaian,
+  classification$Non_Ghanaian
+)
+
+table(ALIVE_combined$m_tribe)
+
+assertthat::are_equal(tribes, class_list)
+tribes[!class_list %in% tribes]
+class_list[!tribes %in% class_list]
+
+
+# Function to classify a tribe
+classify_tribe <- function(tribe) {
+  for (group in names(classification)) {
+    if (tribe %in% classification[[group]]) {
+      return(group)
+    }
+  }
+  return("Unknown")  # Default if not found
+}
+
+# Classification application
+
+ALIVE_combined$m_ethnic <- sapply(
+  ALIVE_combined$m_tribe, classify_tribe)
+ALIVE_combined$p_ethnic <- sapply(
+  ALIVE_combined$p_tribe, classify_tribe
+)
+
+
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+    m_ethnic = 
+      factor(m_ethnic,
+             levels = 
+             c("Akan", "Mole_Dagbani", "Ewe", "Ga_Adangbe", "Guan", "Other_Ghanaian", "Non_Ghanaian")),
+    
+    p_ethnic = 
+      factor(p_ethnic,
+        levels = c("Akan", "Mole_Dagbani", "Ewe", "Ga_Adangbe", "Guan", "Other_Ghanaian", "Non_Ghanaian")
+      )
+  )
+#list(common_vars)
+
+table(ALIVE_combined$m_ethnic, ALIVE_combined$study_group, useNA = "ifany")
+table(ALIVE_combined$m_ethnic, ALIVE_combined$study_group, useNA = "ifany")
+
+cbind(table(KBTH_HCC_std$m_tribe))
+cbind(table(combined_hepatitis_std$m_tribe))
+```
+
+
+
+```{r}
+# Recategorize bmi
+ALIVE_combined <- ALIVE_combined %>% 
+  mutate(
+  bmi_category = 
+      case_when(
+        bmi_known %in% c("Yes", "Yes-Known") ~ "Yes",
+         bmi_known%in% c("No", "No-Unknown") ~ "No"
+  )
+)
+
+
+ALIVE_combined <- ALIVE_combined %>%
+  mutate(bmi_category = as.factor(bmi_category))
+
+
+table(ALIVE_combined$bmi_category, ALIVE_combined$study_group, useNA = "ifany")
+      
+table(combined_hepatitis_std$bmi_known, useNA = "ifany")
+table(KBTH_HCC_std$bmi_known, useNA = "ifany")
+table(KBTH_NHCC_std$bmi_known, useNA = "ifany")
+```
+
+```{r}
+# List all the variables that will be used for descriptives
+
+demographics <- c("age",  "age_category", "sex", "educ_category", "occup", "mstatus_category", "m_ethnic", "p_ethnic", "study_group")
+
+lifestyle <- c("height", "weight", "bmi_category", "smoking_category", "ever_smoked", "alcohol_category", "inject_drug_category", "red_meat", "dairy_product", "vegetables")
+
+clinical <- c("hepc", "dyslipidaemia", "diabetes", "hypertension", "medication")
+
+
+sapply(ALIVE_combined[lifestyle], class)
+
+
+lapply(ALIVE_combined[, c("height", "weight", "bmi_category", "smoking_category", "ever_smoked", "alcohol_category", "inject_drug_category", "red_meat", "dairy_product", "vegetables")], table)
+
+```
+
+```{r}
+# Function to create flextables
+
+bl_to_flex <- function(table) {
+  ft <- as_flex_table(table)
+
+  ft <- fontsize(ft, size = 10, part = "body")
+  ft <- fontsize(ft, size = 11, part = "header")
+  ft <- font(ft, font = "Times New Roman", part = "all")  
+
+  ft <- align(ft, align = "center", part = "all")
+
+  ft <- set_table_properties(ft, layout = "fixed", width = 1.0)
+
+  ft <- width(ft, j = c("stat_0", "stat_1", "stat_2"), width = 1.4)
+  if ("p.value" %in% names(ft$body$dataset)) {
+    ft <- width(ft, j = "p.value", width = 1.0)
+  }
+
+  ft <- bold(ft, bold = TRUE, part = "header")
+  ft <- bg(ft, bg = "#F5F6F5", part = "body")
+  ft <- bg(ft, i = seq(1, nrow(ft$body$dataset), by = 2), bg = "#E8ECEF", part = "body")
+
+  ft <- border_outer(ft, part = "all", border = officer::fp_border(color = "black", width = 1))
+  ft <- border_inner_h(ft, part = "body", border = officer::fp_border(color = "#D3D3D3", width = 0.5))
+  ft <- border_inner_v(ft, part = "body", border = officer::fp_border(color = "#D3D3D3", width = 0.5))
+  ft <- padding(ft, padding = 3, part = "all")
+  ft <- line_spacing(ft, space = 1.0, part = "all")
+
+  return(ft)
+}
+
+
+
+```
+
+***Descriptive Characteristics***
+
+### Demographic characteristics
+
+```{r warning=FALSE, message=FALSE}
+
+demo_table <- ALIVE_combined %>% 
+  select(all_of(demographics), study_group) %>% 
+  tbl_summary(
+    by = study_group,
+    missing = "no",
+    percent = "column",
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    label = list(
+      age_category ~ "Age Group",
+      sex ~ "Sex",
+      educ_category ~ "Education Level", 
+      occup ~ "Occupation",
+      mstatus_category ~ "Marital Status",
+      p_ethnic ~ "Paternal Ethnicity",
+      m_ethnic ~ "Maternal Ethnicity"
+    )
+  ) %>% 
+  add_overall(last = TRUE) %>%
+  add_p() %>%
+  modify_header(
+    update = list(
+      stat_1 ~ "**HCC**\nN = {n}",
+      stat_2 ~ "**HepB**\nN = {n}",
+      stat_0 ~ "**Overall**\nN = {N}"
+    )
+  ) %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Study Group**") %>%
+  bold_labels() %>%
+  italicize_levels()
+demo_ft <- bl_to_flex(demo_table)
+
+```
+
+***Lifestyle Characteristics***
+
+```{r warning=FALSE, message=FALSE}
+lifestyle_table <- ALIVE_combined %>% 
+  select(all_of(lifestyle), study_group) %>% 
+  tbl_summary(
+    by = study_group,
+    missing = "no",
+    percent = "column",
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    label = list(
+      height ~ "Height (cm)",
+      weight ~ "Weight (kg)",
+      bmi_category ~ "BMI Category",
+      smoking_category ~ "Smoking Status",
+      ever_smoked ~ "Ever Smoked",
+      alcohol_category ~ "Alcohol Consumption",
+      inject_drug_category ~ "Injection Drug Use",
+      red_meat ~ "Red Meat Intake",
+      dairy_product ~ "Dairy Product Intake",
+      vegetables ~ "Vegetable Intake"
+    )
+  ) %>% 
+  add_overall(last = TRUE) %>%
+  add_p() %>%
+  modify_header(
+    update = list(
+      stat_1 ~ "**HCC**\nN = {n}",
+      stat_2 ~ "**HepB**\nN = {n}",
+      stat_0 ~ "**Overall**\nN = {N}"
+    )
+  ) %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Study Group**") %>%
+  bold_labels() %>%
+  italicize_levels()
+
+# Convert to flextable
+demo_ft <- bl_to_flex(lifestyle_table)
+
+
+# Check levels by group
+table(ALIVE_combined$red_meat, ALIVE_combined$study_group, useNA = "ifany")
+table(ALIVE_combined$dairy_product, ALIVE_combined$study_group, useNA = "ifany")
+table(ALIVE_combined$vegetables, ALIVE_combined$study_group, useNA = "ifany")
+
+
+```
+
+***Clinical Variables***
+
+```{r}
+clinical_table <- ALIVE_combined %>% 
+  select(all_of(clinical), study_group) %>% 
+  tbl_summary(
+    by = study_group,
+    missing = "no",
+    percent = "column",
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+    digits = list(all_categorical() ~ c(0, 1)),
+    label = list(
+      hepc ~ "Hepatitis C Infection",
+      dyslipidaemia ~ "Dyslipidaemia",
+      diabetes ~ "Diabetes",
+      hypertension ~ "Hypertension",
+      medication ~ "Current Medication Use"
+    )
+  ) %>% 
+  add_overall(last = TRUE) %>%
+  add_p() %>%
+  modify_header(
+    update = list(
+      stat_1 ~ "**HCC**\nN = {n}",
+      stat_2 ~ "**HepB**\nN = {n}",
+      stat_0 ~ "**Overall**\nN = {N}"
+    )
+  ) %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Study Group**") %>%
+  bold_labels() %>%
+  italicize_levels()
+
+demo_ft <- bl_to_flex(clinical_table)
+
+```
+
+***Visualizations***
+
+```{r}
+# Ensure study_group is a factor in desired order
+age_data$study_group <- factor(age_data$study_group, levels = c("HCC", "HepB", "HepC"))
+
+# Create the plot
+age_data <- age_data %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "%\n(n=", n, ")"),
+    label_position = ifelse(prop > 0.08, prop - 0.02, prop + 0.02),  
+    label_color = ifelse(prop > 0.08, "white", "black")              
+  )
+
+# Define custom colors for study groups
+study_colors <- c("HCC" = "#2E3191", "HepB" = "#54B852", "HepC" = "#1F5027") 
+
+# Create the plot
+p_age <- ggplot(age_data, aes(x = age_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(
+    aes(label = label, y = label_position, color = label_color),
+    position = position_dodge(width = 0.8),
+    size = 3,
+    fontface = "bold",
+    lineheight = 0.9,
+    show.legend = FALSE
+  ) +
+  scale_color_identity() +  
+  scale_fill_manual(values = study_colors) +
+  coord_flip() +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Age Distribution by Study Group",
+    y = "Proportion (%)",
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90"),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8)
+  )
+
+# Display the plot
+p_age
+
+
+
+
+```
+
+```{r warning=FALSE, message=FALSE}
+
+ # Prepare data
+sex_data <- ALIVE_combined %>%
+  filter(!is.na(sex)) %>%
+  count(study_group, sex) %>%
+  complete(study_group, sex, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    sex = factor(sex, levels = sort(unique(sex), decreasing = TRUE)),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    hjust_position = ifelse(prop > 0.06, 1.05, -0.05)
+  )
+
+# Create plot
+p_sex <- ggplot(sex_data, aes(x = sex, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label, hjust = hjust_position),
+    position = position_dodge(width = 0.9),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = NULL,
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Sex Distribution by Study Group",
+    y = NULL,
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.ticks = element_blank(),
+    axis.text.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8)
+  )
+
+
+p_sex
+
+
+```
+
+```{r}
+# Education Plot
+educ_data <- ALIVE_combined %>%
+  filter(!is.na(educ_category)) %>%
+  count(study_group, educ_category) %>%
+  complete(study_group, educ_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    educ_category = factor(educ_category, levels = sort(unique(educ_category), decreasing = TRUE)),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")")
+  )
+
+p_educ <- ggplot(educ_data, aes(x = educ_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label, group = study_group),
+    position = position_dodge(width = 0.9),
+    hjust = ifelse(educ_data$prop < 0.15, -0.05, 1.05),
+    size = 3,
+    color = ifelse(educ_data$prop < 0.15, "black", "white"),
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(limits = c(0, 1.2), expand = expansion(mult = c(0, 0.05))) +
+  labs(
+    title = "Education Distribution by Study Group",
+    y = NULL,
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+p_educ
+
+
+```
+
+```{r warning=FALSE}
+# Prepare the data
+occup_data <- ALIVE_combined %>%
+  filter(!is.na(occup)) %>%
+  count(study_group, occup) %>%
+  complete(study_group, occup, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    occup = factor(occup, levels = rev(unique(occup))),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    label_position = ifelse(prop >= 0.08, "inside", "outside")
+  )
+
+# Create plot
+p_occup <- ggplot(occup_data, aes(x = occup, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = ifelse(label_position == "inside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = 1.05,
+    size = 3,
+    color = "white",
+    fontface = "bold"
+  ) +
+  geom_text(
+    aes(label = ifelse(label_position == "outside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = -0.05,
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Occupation Distribution by Study Group",
+    y = NULL,
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+
+p_occup
+
+
+```
+
+```{r warning=FALSE}
+# Prepare the data
+mstatus_data <- ALIVE_combined %>%
+  filter(!is.na(mstatus_category)) %>%
+  count(study_group, mstatus_category) %>%
+  complete(study_group, mstatus_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    mstatus_category = factor(mstatus_category, levels = rev(unique(mstatus_category))),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    label_position = ifelse(prop >= 0.08, "inside", "outside")
+  )
+
+# Create the plot
+p_mstatus <- ggplot(mstatus_data, aes(x = mstatus_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = ifelse(label_position == "inside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = 1.05, color = "white", size = 3, fontface = "bold"
+  ) +
+  geom_text(
+    aes(label = ifelse(label_position == "outside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = -0.05, color = "black", size = 3, fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Marital Status Distribution by Study Group",
+    y = NULL, x = NULL, fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+# Display the plot
+print(p_mstatus)
+
+
+
+```
+
+```{r warning=FALSE}
+# Prepare the data
+m_ethnic_data <- ALIVE_combined %>%
+  filter(!is.na(m_ethnic)) %>%
+  count(study_group, m_ethnic) %>%
+  complete(study_group, m_ethnic, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    m_ethnic = factor(m_ethnic, levels = rev(unique(m_ethnic))),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    label_position = ifelse(prop >= 0.08, "inside", "outside")
+  )
+
+# Create the plot
+p_m_ethnic <- ggplot(m_ethnic_data, aes(x = m_ethnic, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.65, alpha = 0.95) +
+  geom_text(
+    aes(label = ifelse(label_position == "inside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = 1.05, color = "white", size = 3, fontface = "bold"
+  ) +
+  geom_text(
+    aes(label = ifelse(label_position == "outside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = -0.05, color = "black", size = 3, fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Mother's Ethnicity Distribution by Study Group",
+    y = NULL,
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+
+p_m_ethnic
+
+
+```
+
+```{r warning=FALSE}
+# Prepare the data
+p_ethnic_data <- ALIVE_combined %>%
+  filter(!is.na(p_ethnic)) %>%
+  count(study_group, p_ethnic) %>%
+  complete(study_group, p_ethnic, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    p_ethnic = factor(p_ethnic, levels = rev(unique(p_ethnic))),
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    label_position = ifelse(prop >= 0.08, "inside", "outside")
+  )
+
+# Create the plot
+p_p_ethnic <- ggplot(p_ethnic_data, aes(x = p_ethnic, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.65, alpha = 0.95) +
+  geom_text(
+    aes(label = ifelse(label_position == "inside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = 1.05, color = "white", size = 3, fontface = "bold"
+  ) +
+  geom_text(
+    aes(label = ifelse(label_position == "outside", label, NA)),
+    position = position_dodge(width = 0.9),
+    hjust = -0.05, color = "black", size = 3, fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Father's Ethnicity Distribution by Study Group",
+    y = NULL,
+    x = NULL,
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+
+p_p_ethnic
+
+
+
+```
+
+```{r}
+# Combining Demographic plots
+library(plotly)
+
+p_sex_plotly <- layout(p_sex_plotly, title = "Sex")
+p_educ_plotly <- layout(p_educ_plotly, title = "Education")
+p_occup_plotly <- layout(p_occup_plotly, title = "Occupation")
+p_mstatus_plotly <- layout(p_mstatus_plotly, title = "Marital Status")
+p_m_ethnic_plotly <- layout(p_m_ethnic_plotly, title = "Mother's Ethnicity")
+p_p_ethnic_plotly <- layout(p_p_ethnic_plotly, title = "Father's Ethnicity")
+
+
+combined_plotly1 <- plotly::subplot(
+  p_sex_plotly, p_educ_plotly, p_occup_plotly,
+  nrows = 2,  # Only include this if it works for your plotly version
+  shareX = FALSE, shareY = FALSE, titleX = TRUE, titleY = TRUE
+)
+
+combined_plotly <- plotly::subplot(
+  p_mstatus_plotly, p_m_ethnic_plotly, p_p_ethnic_plotly
+)
+```
+
+```{r}
+library(plotly)
+
+p_mstatus_plotly <- plot_ly(
+  data = ALIVE_combined,
+  x = ~percent,
+  y = ~mstatus,
+  type = 'bar',
+  orientation = 'h',
+  text = ~paste0(percent, "% (n=", n, ")"),
+  textposition = 'outside',   # <--- This moves label outside the bar
+  ...
+)
+
+p_mstatus_plotly <- layout(
+  p_mstatus_plotly,
+  
+  yaxis = list(tickfont = list(size = 12)),
+  xaxis = list(tickfont = list(size = 12)),
+  font = list(size = 12)   # controls overall font size
+)
+
+p_mstatus_plotly <- layout(
+  p_mstatus_plotly,
+  margin = list(l = 100, r = 100)  # Increase left/right margin as needed
+)
+# Add the title and legend settings for each plot
+p_sex_plotly     <- layout(p_sex_plotly,     title = "Sex", showlegend = TRUE)
+p_educ_plotly    <- layout(p_educ_plotly,    title = "Education", showlegend = FALSE)
+p_mstatus_plotly <- layout(p_mstatus_plotly, title = "Marital Status", showlegend = FALSE)
+
+# Combine in a single row (or use nrows=3 for a column)
+combined_plotly <- subplot(
+  p_sex_plotly, p_educ_plotly, p_mstatus_plotly,
+  nrows = 1,
+  shareX = FALSE, shareY = FALSE, titleX = TRUE, titleY = TRUE
+)
+
+combined_plotly <- layout(combined_plotly, title = "Key Demographic Distributions by Study Group")
+combined_plotly
+```
+
+***Lifestyle Variable Visualizations***
+
+```{r}
+# Define custom colors for study groups
+study_colors <- c("HCC" = "#2E3191", "HepB" = "#54B852", "HepC" = "#1F5027") 
+
+# Prepare the data
+height_data <- ALIVE_combined %>%
+  filter(!is.na(height)) %>%
+  mutate(height_category = cut(height, breaks = quantile(height, probs = seq(0, 1, 0.25), na.rm = TRUE), include.lowest = TRUE)) %>%
+  count(study_group, height_category) %>%
+  complete(study_group, height_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    height_category = factor(height_category, levels = rev(levels(height_category)))
+  )
+
+# Create the plot
+p_height <- ggplot(height_data, aes(x = height_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    hjust = ifelse(height_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors, drop = FALSE) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Height Distribution by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+# Display the plot
+print(p_height)
+
+
+```
+
+```{r}
+weight_data <- ALIVE_combined %>%
+  filter(!is.na(weight)) %>%
+  mutate(weight_category = cut(weight, breaks = quantile(weight, probs = seq(0, 1, 0.25), na.rm = TRUE), include.lowest = TRUE)) %>%
+  count(study_group, weight_category) %>%
+  complete(study_group, weight_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    weight_category = factor(weight_category, levels = rev(levels(weight_category)))
+  )
+
+p_weight <- ggplot(weight_data, aes(x = weight_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    hjust = ifelse(weight_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Weight Distribution by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_weight)
+
+
+```
+
+```{r}
+bmi_data <- ALIVE_combined %>%
+  filter(!is.na(bmi_category)) %>%
+  count(study_group, bmi_category) %>%
+  complete(study_group, bmi_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    bmi_category = factor(bmi_category, levels = rev(unique(bmi_category)))
+  )
+
+p_bmi <- ggplot(bmi_data, aes(x = bmi_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(bmi_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "BMI Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_bmi)
+
+
+```
+
+```{r}
+smoking_data <- ALIVE_combined %>%
+  filter(!is.na(smoking_category)) %>%
+  count(study_group, smoking_category) %>%
+  complete(study_group, smoking_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    smoking_category = factor(smoking_category, levels = rev(unique(smoking_category)))
+  )
+
+p_smoking <- ggplot(smoking_data, aes(x = smoking_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(smoking_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Smoking Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_smoking)
+
+
+```
+
+```{r}
+alcohol_data <- ALIVE_combined %>%
+  filter(!is.na(alcohol_category)) %>%
+  count(study_group, alcohol_category) %>%
+  complete(study_group, alcohol_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    alcohol_category = factor(alcohol_category, levels = rev(unique(alcohol_category)))
+  )
+
+p_alcohol <- ggplot(alcohol_data, aes(x = alcohol_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(alcohol_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Alcohol Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_alcohol)
+
+
+```
+
+```{r}
+ever_smoked_data <- ALIVE_combined %>%
+  filter(!is.na(ever_smoked)) %>%
+  count(study_group, ever_smoked) %>%
+  complete(study_group, ever_smoked, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    ever_smoked = factor(ever_smoked, levels = rev(unique(ever_smoked)))
+  )
+
+p_ever_smoked <- ggplot(ever_smoked_data, aes(x = ever_smoked, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(ever_smoked_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Ever_Smoked Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_ever_smoked)
+
+```
+
+```{r}
+inject_drug_data <- ALIVE_combined %>%
+  filter(!is.na(inject_drug_category)) %>%
+  count(study_group, inject_drug_category) %>%
+  complete(study_group, inject_drug_category, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    inject_drug_category = factor(inject_drug_category, levels = rev(unique(inject_drug_category)))
+  )
+
+p_inject_drug <- ggplot(inject_drug_data, aes(x = inject_drug_category, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(inject_drug_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Inject_drug Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_inject_drug)
+
+```
+
+```{r}
+red_meat_data <- ALIVE_combined %>%
+  filter(!is.na(red_meat)) %>%
+  count(study_group, red_meat) %>%
+  complete(study_group, red_meat, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    red_meat = factor(red_meat, levels = rev(unique(red_meat)))
+  )
+
+p_red_meat <- ggplot(red_meat_data, aes(x = red_meat, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(red_meat_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Red_meat Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_red_meat)
+
+```
+
+```{r}
+dairy_product_data <- ALIVE_combined %>%
+  filter(!is.na(dairy_product)) %>%
+  count(study_group, dairy_product) %>%
+  complete(study_group, dairy_product, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    dairy_product = factor(dairy_product, levels = rev(unique(dairy_product)))
+  )
+
+p_dairy_product <- ggplot(dairy_product_data, aes(x = dairy_product, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(dairy_product_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Dairy_product Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_dairy_product)
+
+```
+
+```{r}
+vegetables_data <- ALIVE_combined %>%
+  filter(!is.na(vegetables)) %>%
+  count(study_group, vegetables) %>%
+  complete(study_group, vegetables, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    vegetables = factor(vegetables, levels = rev(unique(vegetables)))
+  )
+
+p_vegetables <- ggplot(vegetables_data, aes(x = vegetables, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(vegetables_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Vegetables Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_vegetables)
+
+```
+
+```{r}
+# Combining lifestyle plots
+
+```
+
+***Clinical Vars VisualiZation***
+
+```{r}
+dyslipidaemia_data <- ALIVE_combined %>%
+  filter(!is.na(dyslipidaemia)) %>%
+  count(study_group, dyslipidaemia) %>%
+  complete(study_group, dyslipidaemia, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    dyslipidaemia = factor(dyslipidaemia, levels = rev(unique(dyslipidaemia)))
+  )
+
+p_vegetables <- ggplot(dyslipidaemia_data, aes(x = dyslipidaemia, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(dyslipidaemia_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Dyslipidaemia Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_vegetables)
+
+```
+
+```{r}
+hypertension_data <- ALIVE_combined %>%
+  filter(!is.na(hypertension)) %>%
+  count(study_group, hypertension) %>%
+  complete(study_group, hypertension, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    hypertension = factor(hypertension, levels = rev(unique(hypertension)))
+  )
+
+p_hypertension <- ggplot(hypertension_data, aes(x = hypertension, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(hypertension_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Dyslipidaemia Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_hypertension)
+
+
+```
+
+```{r}
+diabetes_data <- ALIVE_combined %>%
+  filter(!is.na(diabetes)) %>%
+  count(study_group, diabetes) %>%
+  complete(study_group, diabetes, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    diabetes = factor(diabetes, levels = rev(unique(diabetes)))
+  )
+
+p_diabetes <- ggplot(diabetes_data, aes(x = diabetes, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(diabetes_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Diabetes Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_diabetes)
+
+```
+
+```{r}
+medication_data <- ALIVE_combined %>%
+  filter(!is.na(medication)) %>%
+  count(study_group, medication) %>%
+  complete(study_group, medication, fill = list(n = 0)) %>%
+  group_by(study_group) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(round(prop * 100, 1), "% (n=", n, ")"),
+    medication = factor(medication, levels = rev(unique(medication)))
+  )
+
+p_medication <- ggplot(medication_data, aes(x = medication, y = prop, fill = study_group)) +
+  geom_col(position = position_dodge(0.9), width = 0.7, alpha = 0.95) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(0.9),
+    hjust = ifelse(medication_data$prop > 0.15, 1.05, -0.05),
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = study_colors) +
+  scale_y_continuous(
+    limits = c(0, 1.2),
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Medication Category by Study Group",
+    x = NULL,
+    y = "Percentage (%)",
+    fill = "Study Group"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+    axis.text = element_text(size = 9),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90")
+  )
+
+print(p_medication)
+
+```
+
+```{r}
+# Combining Clinical plots
+
+
+```
